@@ -10,6 +10,19 @@ FILE_PART_SIZE = 40*1024*1024
 @Pyro5.api.expose
 class MainServer(object):
     def __init__(self) -> None:
+        '''
+        usando o nameserver, procuramos por nós cujo nome comece com datanode_
+        criamos um dicionário que mapeia nome de datanode com endereços e uma
+        lista com nome dos datanodes.
+        Na hora de criar o proxy, o metodo retorna antes da conexão ser estabelecida,
+        então uma gambiarra de chamar um método remoto qualquer antes de pegar o ip do
+        datanode foi usada pra garantir que a conexão esteja estabelecida.
+        A partir da lista dos nomes de datanodes, criamos uma balanceador rudimentar do
+        tipo round robin, pra ciclar entre os nós disponível na hora da inserção
+        Um dicionario de metadados que mapeia nome de arquivo para uma lista de partes e
+        os respectivos endereços de onde estão armazenados essas partes. O objetivo é iterar
+        essa lista para remontar o arquivo de volta pro cliente na hora do download
+        '''
         self.ns = Pyro5.api.locate_ns()
         #dict of name: uri
         self.datanode_dict = self.ns.list(prefix="datanode_")
@@ -31,6 +44,15 @@ class MainServer(object):
         node = next(self.circular_queue)
         return self.datanode_dict[node]
     
+    '''
+    Por questões de desempenho, a transferência de arquivos é feita usando sockets comuns
+    O cliente chama este método passando o nome do arquivo a ser enviado, o método prepara um
+    socket para fazer este upload e devolve o número da porta para o cliente se conectar e enviar
+    o arquivo. Como o socket é criado especificamente para o arquivo especificado, o cliente só
+    precisa se conectar, enviar o arquivo completo e fechar a conexão.
+    No lado do servidor (aqui), o socket é passado para uma thread que receberá as partes e irá
+    distribuir nos datanodes
+    '''
     def upload_image_socket(self, file_name):
         sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         sock.bind(('0.0.0.0', 0))
@@ -40,6 +62,17 @@ class MainServer(object):
         t.start()
         return port
 
+    '''
+    Este método é o que recebe o socket que se conecta com o cliente e distribui o arquivo em
+    partes.
+    Pra cada parte de arquivo, um sufixo do tipo _part00004 é criado, um datanode é selecionado
+    usando a fila circular, e o chunk é enviado pro datanode, de forma semelhante ao cliente enviando
+    para o main. O dicionário de listas de partes é atualizado para possibilitar remontagem
+    do arquivo.
+    Ficou mais complicado do que gostaria. A ideia inicial era usar proxys prontos, definidos na __init__, mas ao usar threads, por
+    algum motivo, o pyro não deixa usarmos os proxys prontos, então tive que criar um pra cada parte
+    a ser enviada. Estou buscando melhorar esta parte.
+    '''
     def distribute_image(self, file_name: str, srv_socket: socket.socket):
         srv_socket.listen(1)
         print('aceitando conexão')
@@ -81,6 +114,10 @@ class MainServer(object):
         client_socket.close()
         srv_socket.close()
 
+
+    '''
+    Semelhante a upload_image_socket, mas para baixar
+    '''
     def download_image_socket(self, file_name):
         sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         sock.bind(('0.0.0.0', 0))
@@ -89,7 +126,10 @@ class MainServer(object):
         t.start()
         return port
     
-
+    '''
+    Faz o inverso de distribute_image. Usando o dicionário com a lista de partes, conectamos
+    com o cliente, iteramos a lista de partes, baixado os dados e enviando para o cliente.
+    '''
     def rebuild_image(self, file_name: str, srv_socket: socket.socket):
         srv_socket.listen(1)
         print('aceitando conexão')
@@ -120,15 +160,10 @@ class MainServer(object):
             obj = Pyro5.api.Proxy(f'PYRONAME:{part[1]}')
             obj.delete_image(part[0])
 
-    def hello(self):
-        node = next(self.circular_queue)
-        node = self.datanode_dict[node][0]
-        return node.hello()
+    
+    # Usada no cliente para garantir que estamos conectados (igual fazemos aqui com hello())
     def echo_test(self):
         return 'echo'
-    def return_ip(self):
-        node = next(self.circular_queue)
-        return self.datanode_dict[node][1]
 
 if __name__ == '__main__':
     Pyro5.config.PREFER_IP_VERSION = 4
