@@ -1,29 +1,96 @@
 import Pyro5.api
+import os
+import socket
+import uuid
+import threading
 
+CHUNK_SIZE = 10*1024*1024
 DATANODE_INSTANCE = 1
+
+def store_image(file_name: str, srv_socket: socket.socket):
+    srv_socket.listen(1)
+    print('aceitando conexão')
+    client_socket, addr = srv_socket.accept()
+    with open(f'datanode_dir/{file_name}', "wb") as file:
+        print('recebendo arquivo')
+        while True:
+            chunk = client_socket.recv(CHUNK_SIZE)
+            if not chunk: break
+            file.write(chunk)
+        print('encerrando socket cliente')
+        client_socket.close()
+    print('encerrando socket server')
+    srv_socket.close()
+
+
+def retrieve_image(file_name: str, srv_socket: socket.socket):
+    srv_socket.listen(1)
+    print('aceitando conexão')
+    client_socket, addr = srv_socket.accept()
+    with open(f'datanode_dir/{file_name}', "rb") as file:
+        print('enviando arquivo')
+        client_socket.sendfile(file)
+        print('encerrando socket cliente')
+        client_socket.close()
+    print('encerrando socket server')
+    srv_socket.close()
 
 @Pyro5.api.expose
 class Datanode(object):
     def __init__(self) -> None:
-        pass
-    def testing(self, n):
-        return f"the answer is {n}"
-    
-    def store_image(self, image_id):
-        pass
+        self.clean_start()
+        if not os.path.exists('datanode_dir/'):
+            os.makedirs('datanode_dir/')
+        self.files = os.listdir('datanode_dir/')
+        self.file_locks = {}
 
-    def retrieve_image(self, image_id):
-        pass
+    def clean_start(self):
+        if os.path.exists('datanode_dir/'):
+            files = os.listdir('datanode_dir/')
+            print(files)
+            for file in files:
+                os.remove(f'datanode_dir/{file}')
+
+    def get_file_lock(self, file_name):
+        if file_name not in self.file_locks:
+            self.file_locks[file_name] = threading.Lock()
+        return self.file_locks[file_name]
+
+    def hello(self):
+        return "hello world"
+
+    def store_image_socket(self, image_name):
+        print('criando socket')
+        sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        sock.bind(('0.0.0.0', 0))
+        port = sock.getsockname()[1]
+        t = threading.Thread(target=store_image, args=(image_name, sock), daemon=True)
+        print('disparando thread')
+        t.start()
+        return port
+
+    def retrieve_image_socket(self, image_name):
+        sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        sock.bind(('0.0.0.0', 0))
+        port = sock.getsockname()[1]
+        t = threading.Thread(target=retrieve_image, args=(image_name, sock), daemon=True)
+        t.start()
+        return port
 
     def list_images(self):
-        pass
+        return os.listdir('datanode_dir/')
+
+    def delete_image(self, image_name):
+        os.remove(f'datanode_dir/{image_name}')
 
 
 
 if __name__ == '__main__':
-    daemon = Pyro5.server.Daemon()
+    Pyro5.config.PREFER_IP_VERSION = 4
+    datanode_name = f"datanode_{uuid.uuid4().hex}" # nome dinamico
+    daemon = Pyro5.api.Daemon() 
+    uri = daemon.register(Datanode())
     ns = Pyro5.api.locate_ns()
-    uri = daemon.register(Datanode)
-    ns.register(f"datanode_{DATANODE_INSTANCE:02}", uri)
-    print("Ready.")
-    daemon.requestLoop()
+    ns.register(datanode_name, uri) 
+    print("Ready. Object uri =", uri) 
+    daemon.requestLoop()                    # start the event loop of the server to wait for calls
