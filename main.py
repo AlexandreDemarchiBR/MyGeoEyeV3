@@ -31,6 +31,7 @@ class MainServer(object):
         for node in self.datanode_list:
             # replace uri with remote object and ip
             obj = Pyro5.api.Proxy(self.datanode_dict[node])
+            # uri = Pyro5.core.resolve(self.datanode_dict[node]) # to only get uri
             obj.hello() # ensure it is connected before gettin ip
             ip = obj._pyroConnection.sock.getpeername()[0]
             self.datanode_dict[node] = (obj, ip)
@@ -55,7 +56,7 @@ class MainServer(object):
     '''
     def upload_image_socket(self, file_name):
         sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        sock.bind(('0.0.0.0', 0))
+        sock.bind((my_ip, 0))
         port = sock.getsockname()[1]
         t = threading.Thread(target=self.distribute_image, args=(file_name, sock), daemon=True)
         print('disparando thread')
@@ -120,7 +121,7 @@ class MainServer(object):
     '''
     def download_image_socket(self, file_name):
         sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        sock.bind(('0.0.0.0', 0))
+        sock.bind((my_ip, 0))
         port = sock.getsockname()[1]
         t = threading.Thread(target=self.rebuild_image, args=(file_name, sock), daemon=True)
         t.start()
@@ -166,8 +167,12 @@ class MainServer(object):
         return 'echo'
 
 if __name__ == '__main__':
-    Pyro5.config.PREFER_IP_VERSION = 4
-    daemon = Pyro5.api.Daemon() 
+    with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as s:
+        # goal is to automatically bind the server to the IP that
+        # will be visible outside the host. This part get this IP
+        s.connect(("8.8.8.8", 80))
+        my_ip = s.getsockname()[0]
+    daemon = Pyro5.api.Daemon(host=my_ip)
     uri = daemon.register(MainServer())
     ns = Pyro5.api.locate_ns()
     ns.register('mainserver', uri) 

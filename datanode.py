@@ -14,35 +14,31 @@ cliente (que neste contexto é o main) recebe dados e persiste com o nome passad
 parametro file_name
 '''
 def store_image(file_name: str, srv_socket: socket.socket):
-    srv_socket.listen(1)
-    print('aceitando conexão')
-    client_socket, addr = srv_socket.accept()
-    with open(f'datanode_dir/{file_name}', "wb") as file:
-        print('recebendo arquivo')
-        while True:
-            chunk = client_socket.recv(CHUNK_SIZE)
-            if not chunk: break
-            file.write(chunk)
-        print('encerrando socket cliente')
-        client_socket.close()
-    print('encerrando socket server')
-    srv_socket.close()
+    with srv_socket:
+        srv_socket.listen(1)
+        print('aceitando conexão')
+        client_socket, addr = srv_socket.accept()
+        with client_socket, open(f'datanode_dir/{file_name}', "wb") as file:
+            print('recebendo arquivo')
+            while True:
+                chunk = client_socket.recv(CHUNK_SIZE)
+                if not chunk: break
+                file.write(chunk)
+            print('encerrando socket cliente')
+        print('encerrando socket server')
 
 '''
 Semelhante à anterior, mas lê o arquivo de nome file_name, e envia para o socket do
 cliente (que aqui é o main)
 '''
 def retrieve_image(file_name: str, srv_socket: socket.socket):
-    srv_socket.listen(1)
-    print('aceitando conexão')
-    client_socket, addr = srv_socket.accept()
-    with open(f'datanode_dir/{file_name}', "rb") as file:
-        print('enviando arquivo')
-        client_socket.sendfile(file)
-        print('encerrando socket cliente')
-        client_socket.close()
-    print('encerrando socket server')
-    srv_socket.close()
+    with srv_socket:
+        srv_socket.listen(1)
+        print('aceitando conexão')
+        client_socket, addr = srv_socket.accept()
+        with client_socket, open(f'datanode_dir/{file_name}', "rb") as file:
+            print('enviando arquivo')
+            client_socket.sendfile(file)
 
 @Pyro5.api.expose
 class Datanode(object):
@@ -84,10 +80,10 @@ class Datanode(object):
     def store_image_socket(self, image_name):
         print('criando socket')
         sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        sock.bind(('0.0.0.0', 0))
+        sock.bind((my_ip, 0))
         port = sock.getsockname()[1]
         t = threading.Thread(target=store_image, args=(image_name, sock), daemon=True)
-        print('disparando thread')
+        print('starting thread')
         t.start()
         return port
     '''
@@ -95,7 +91,7 @@ class Datanode(object):
     '''
     def retrieve_image_socket(self, image_name):
         sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        sock.bind(('0.0.0.0', 0))
+        sock.bind((my_ip, 0))
         port = sock.getsockname()[1]
         t = threading.Thread(target=retrieve_image, args=(image_name, sock), daemon=True)
         t.start()
@@ -106,15 +102,24 @@ class Datanode(object):
 
     def delete_image(self, image_name):
         os.remove(f'datanode_dir/{image_name}')
+    
+    def available_space(self):
+        statvfs = os.statvfs(os.path.expanduser('datanode_dir'))
+        return statvfs.f_frsize * statvfs.f_bfree
 
 
 
 if __name__ == '__main__':
-    Pyro5.config.PREFER_IP_VERSION = 4
-    datanode_name = f"datanode_{uuid.uuid4().hex}" # nome dinamico
-    daemon = Pyro5.api.Daemon() 
+    with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as s:
+        # goal is to automatically bind the server to the IP that
+        # will be visible outside the host. This part get this IP
+        s.connect(("8.8.8.8", 80))
+        my_ip = s.getsockname()[0]
+    datanode_name = f"datanode_{uuid.uuid4().hex}" # dinamic name
+    daemon = Pyro5.api.Daemon(host=my_ip)
     uri = daemon.register(Datanode())
     ns = Pyro5.api.locate_ns()
-    ns.register(datanode_name, uri) 
-    print("Ready. Object uri =", uri) 
-    daemon.requestLoop()                    # start the event loop of the server to wait for calls
+    ns.register(datanode_name, uri)
+    #ns.register(datanode_name, uri, metadata={"datanode"})
+    print("Ready. Object uri =", uri)
+    daemon.requestLoop()

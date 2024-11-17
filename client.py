@@ -3,6 +3,8 @@ import os
 import socket
 from itertools import cycle
 import threading
+import time
+import matplotlib.pyplot as plt
 
 CHUNK_SIZE = 10*1024*1024
 
@@ -43,11 +45,35 @@ class Client:
                 if not chunk: break
                 f.write(chunk)
     
+
+    '''
+    Só recebe os dados, sem persistir. Usado exclusivamente para benchmark
+    (o objetivo é testar os servidores, não o armazenamento do cliente)
+    '''
+    def pseudo_download_image(self, file_name):
+        
+        port = self.main.download_image_socket(file_name) ############
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+            s.connect((self.main_ip, port))
+            while True:
+                chunk = s.recv(CHUNK_SIZE)
+                if not chunk: break
+    
+    
     def list_images(self):
         return self.main.list_images()
     
     def delete_image(self, file_name):
         self.main.delete_image(file_name)
+    
+    def download_benchmark(self, file_name, threads_per_second, duration_seconds):
+        interval = 1/threads_per_second
+        end_time = time.time() + duration_seconds
+        while time.time() < end_time:
+            thread = threading.Thread(target=self.pseudo_download_image, args=(file_name,))
+            thread.start()
+            time.sleep(interval)
+
 
 
 if __name__ == '__main__':
