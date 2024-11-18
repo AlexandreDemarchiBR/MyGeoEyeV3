@@ -8,7 +8,7 @@ set password "aula321"
 
 puts "enviando $file"
 
-if {$file == "main_dir/workers.txt"} {
+if {$file == "main_dir/workers.txt" || $file == "main_dir/all.txt" || $file == "main_dir/ns_host.txt"} {
     spawn scp $file $user@$host:~/MyGeoEyeV3/main_dir
 } elseif {[string match "utils*" $file]} {
     spawn scp $file $user@$host:~/MyGeoEyeV3/utils

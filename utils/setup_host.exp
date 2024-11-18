@@ -42,7 +42,7 @@ send "mkdir -p MyGeoEyeV3/log\r"
 expect "$ "
 send "mkdir -p MyGeoEyeV3/utils\r"
 expect "$ "
-send "pip install -U pyro5 pip matplotlib numpy --break-system-packages\r"
+send "pip install -U pyro5 pip matplotlib numpy\r"
 expect "$ "
 send "exit\r"
 expect eof

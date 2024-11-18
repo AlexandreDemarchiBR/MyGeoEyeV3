@@ -1,9 +1,12 @@
 #!/bin/bash
-# envia arqivos para os workers
-for ip in $(cat main_dir/workers.txt| cut -f 1 -d " "); do
+# envia arqivos para todos os envolvidos
+for ip in $(cat main_dir/all.txt| cut -f 1 -d " "); do
     expect utils/update_host.exp main.py $ip
     expect utils/update_host.exp datanode.py $ip
     expect utils/update_host.exp main_dir/workers.txt $ip
+    expect utils/update_host.exp main_dir/all.txt $ip
+    expect utils/update_host.exp main_dir/ns_host.txt $ip
+
 
     expect utils/update_host.exp update_all $ip
     expect utils/update_host.exp utils/update_all.sh $ip

@@ -23,13 +23,19 @@ class MainServer(object):
         os respectivos endereços de onde estão armazenados essas partes. O objetivo é iterar
         essa lista para remontar o arquivo de volta pro cliente na hora do download
         '''
-        self.ns = Pyro5.api.locate_ns()
+        with open('main_dir/ns_host.txt') as f:
+            ns_ip = f.readline()
+        
+        self.ns = Pyro5.api.locate_ns(ns_ip)
         #dict of name: uri
         self.datanode_dict = self.ns.list(prefix="datanode_")
         #list containing names
         self.datanode_list = [name for name in self.datanode_dict]
+        #print (self.datanode_dict)
         for node in self.datanode_list:
             # replace uri with remote object and ip
+            print("***node***: ", node)
+            #print(self.datanode_dict[node])
             obj = Pyro5.api.Proxy(self.datanode_dict[node])
             # uri = Pyro5.core.resolve(self.datanode_dict[node]) # to only get uri
             obj.hello() # ensure it is connected before gettin ip
@@ -158,8 +164,11 @@ class MainServer(object):
     def delete_image(self, file_name):
         chunk_list = self.filename_metadata[file_name]
         for part in chunk_list: # (partname, datanode)
+            print(part[0])
             obj = Pyro5.api.Proxy(f'PYRONAME:{part[1]}')
             obj.delete_image(part[0])
+        del(self.filename_metadata[file_name])
+
 
     
     # Usada no cliente para garantir que estamos conectados (igual fazemos aqui com hello())
@@ -174,7 +183,11 @@ if __name__ == '__main__':
         my_ip = s.getsockname()[0]
     daemon = Pyro5.api.Daemon(host=my_ip)
     uri = daemon.register(MainServer())
-    ns = Pyro5.api.locate_ns()
+
+    with open('main_dir/ns_host.txt') as f:
+        ns_ip = f.readline()  
+    ns = Pyro5.api.locate_ns(ns_ip)
+    
     ns.register('mainserver', uri) 
     print("Ready. Object uri =", uri) 
     daemon.requestLoop()                    # start the event loop of the server to wait for calls

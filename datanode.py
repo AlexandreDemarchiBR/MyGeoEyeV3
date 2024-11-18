@@ -118,7 +118,10 @@ if __name__ == '__main__':
     datanode_name = f"datanode_{uuid.uuid4().hex}" # dinamic name
     daemon = Pyro5.api.Daemon(host=my_ip)
     uri = daemon.register(Datanode())
-    ns = Pyro5.api.locate_ns()
+    with open('main_dir/ns_host.txt') as f:
+        ns_ip = f.readline()
+    ns = Pyro5.api.locate_ns(ns_ip)
+    
     ns.register(datanode_name, uri)
     #ns.register(datanode_name, uri, metadata={"datanode"})
     print("Ready. Object uri =", uri)

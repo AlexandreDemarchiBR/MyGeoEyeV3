@@ -64,8 +64,8 @@ start_datanode() {
 # Inicia instâncias de todo o sistema
 start_all() {
     start_ns
-    start_main
     start_datanode
+    start_main
 }
 
 # Atualiza os arquivos de main
