@@ -1,0 +1,48 @@
+#!/usr/bin/expect -f
+# setup_env.exp 192.168.100.2
+#exp_internal 1  
+set host [lindex $argv 0]
+set user "aluno"
+set password "aula321"
+set timeout -1
+puts "conectando em $host"
+spawn ssh $user@$host
+
+expect {
+#    timeout {
+#        puts "Connection timed out"
+#        exit 1
+#    }
+    -re "yes/no" {
+        puts "host desconhecido"
+        send "yes\r"
+        expect "assword:" {
+            send "$password\r" 
+            puts "$password enviado"
+        }
+        expect "$ "
+    }
+    "assword:" {
+        send "$password\r"
+        puts "$password enviado"
+        expect "$ "
+    }
+    "$ " {
+        puts "login sem password"
+    }
+}
+
+send "mkdir -p MyGeoEyeV3/main_dir\r"
+expect "$ "
+send "mkdir -p MyGeoEyeV3/client_dir\r"
+expect "$ "
+send "mkdir -p MyGeoEyeV3/datanode_dir\r"
+expect "$ "
+send "mkdir -p MyGeoEyeV3/log\r"
+expect "$ "
+send "mkdir -p MyGeoEyeV3/utils\r"
+expect "$ "
+send "pip install -U pyro5 pip matplotlib numpy --break-system-packages\r"
+expect "$ "
+send "exit\r"
+expect eof

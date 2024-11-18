@@ -1,0 +1,43 @@
+#!/usr/bin/expect -f
+# control_host.exp host action daemon (eg. control_host.exp 192.168.0.11 start main)
+
+set host [lindex $argv 0]
+set action [lindex $argv 1]
+set daemon [lindex $argv 2]
+set user "aluno"
+set password "aula321"
+
+puts "conectando em $host"
+spawn ssh $user@$host
+
+expect {
+    timeout {
+        puts "Connection timed out"
+        exit 1
+    }
+    -re "yes/no" {
+        #puts "host desconhecido"
+        send "yes\r"
+        expect "assword:" {
+            send "$password\r" 
+            #puts "$password enviado"
+            expect "$ "
+        }
+    }
+    "assword:" {
+        send "$password\r"
+        #puts "$password enviado"
+        expect "$ "
+    }
+    "$ " {
+        puts "login sem password"
+        #expect "$ "
+    }
+}
+
+send "cd MyGeoEyeV3\r"
+expect "$ "
+send "./utils/$action\_$daemon.sh\r"
+expect "$ "
+send "exit\r"
+expect eof
